@@ -1,16 +1,21 @@
 """Ad image generation.
 
-`images.py` is the SINGLE image-backend boundary — swapping Imagen for another
-provider touches only this file. With a Gemini key we call Imagen via
-google-genai; without one (offline/stub) we write a deterministic solid-color
-placeholder PNG using stdlib only (no Pillow dependency), so the whole pipeline
-runs end-to-end with zero credentials.
+`images.py` is the SINGLE image-backend boundary — swapping the provider touches
+only this file. With an OpenAI key we call the `gpt-image-2` model; without one
+(offline/stub) we write a deterministic solid-color placeholder PNG using stdlib
+only (no Pillow dependency), so the whole pipeline runs end-to-end with zero
+credentials.
+
+Facebook placements need different aspect ratios (Feed 1:1, Story/Reel 9:16,
+4:5). OpenAI takes a pixel `size`, not an aspect string, so we map ratios to the
+nearest supported size.
 
 Policy: prompts are editorial/illustrative. Never depict betting slips, money,
 odds, or casino imagery (enforced in the prompt builder in creative.py).
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import struct
 import sys
@@ -18,8 +23,50 @@ import zlib
 from pathlib import Path
 from typing import Optional
 
+# OpenAI gpt-image supports a fixed set of sizes; map ad aspect ratios to the
+# nearest one (9:16 has no native size -> closest portrait, crop downstream).
+_ASPECT_TO_SIZE = {
+    "1:1": "1024x1024",
+    "4:5": "1024x1536",
+    "2:3": "1024x1536",
+    "9:16": "1024x1536",
+    "3:2": "1536x1024",
+    "16:9": "1536x1024",
+}
+# Small, proportional placeholder dims (keep stub PNGs tiny).
+_ASPECT_TO_PLACEHOLDER = {
+    "1:1": (32, 32),
+    "4:5": (32, 40),
+    "2:3": (32, 48),
+    "9:16": (27, 48),
+    "3:2": (48, 32),
+    "16:9": (48, 27),
+}
 
-def _solid_png(path: Path, rgb=(20, 30, 48), width: int = 16, height: int = 16) -> None:
+
+def size_for_aspect(aspect_ratio: str) -> str:
+    return _ASPECT_TO_SIZE.get(aspect_ratio, "1024x1024")
+
+
+def get_client(api_key: Optional[str]):
+    """Return an OpenAI client, or None if no key / package unavailable."""
+    if not api_key:
+        return None
+    try:
+        from openai import OpenAI  # lazy: package may be absent
+    except ImportError:
+        print("[WARN] openai not installed; image generation disabled",
+              file=sys.stderr)
+        return None
+    try:
+        return OpenAI(api_key=api_key)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WARN] OpenAI client init failed: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        return None
+
+
+def _solid_png(path: Path, rgb=(20, 30, 48), width: int = 32, height: int = 32) -> None:
     """Write a minimal valid PNG of a solid color using only stdlib."""
     def chunk(tag: bytes, data: bytes) -> bytes:
         return (struct.pack(">I", len(data)) + tag + data
@@ -45,34 +92,38 @@ def _color_from_seed(seed: str) -> tuple:
 
 
 def generate_image(prompt: str, out_path: Path, *, client=None, model: str = "",
-                   seed: str = "") -> Optional[Path]:
+                   seed: str = "", aspect_ratio: str = "1:1") -> Optional[Path]:
     """Generate an image for `prompt` at `out_path`. Returns the path or None.
 
-    Falls back to a deterministic placeholder PNG when no client/model is given
-    or when the Imagen call fails — the pipeline must never break on imagery.
+    `client` is an OpenAI client (see get_client). Falls back to a deterministic
+    placeholder PNG (sized to the aspect ratio) when no client/model is given or
+    the API call fails — the pipeline must never break on imagery.
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     if client is not None and model:
         try:
-            from google.genai import types as genai_types  # lazy
-            resp = client.models.generate_images(
-                model=model,
-                prompt=prompt,
-                config=genai_types.GenerateImagesConfig(
-                    number_of_images=1, aspect_ratio="1:1"),
+            resp = client.images.generate(
+                model=model, prompt=prompt, n=1,
+                size=size_for_aspect(aspect_ratio),
             )
-            img = resp.generated_images[0].image
-            data = getattr(img, "image_bytes", None)
-            if data:
-                out_path.write_bytes(data)
+            datum = resp.data[0]
+            b64 = getattr(datum, "b64_json", None)
+            if b64:
+                out_path.write_bytes(base64.b64decode(b64))
+                return out_path
+            url = getattr(datum, "url", None)
+            if url:
+                import requests  # lazy
+                out_path.write_bytes(requests.get(url, timeout=60).content)
                 return out_path
         except Exception as exc:  # noqa: BLE001
-            print(f"[WARN] Imagen failed ({type(exc).__name__}: {exc}); "
+            print(f"[WARN] OpenAI image failed ({type(exc).__name__}: {exc}); "
                   "writing placeholder", file=sys.stderr)
 
-    _solid_png(out_path, rgb=_color_from_seed(seed or prompt))
+    w, h = _ASPECT_TO_PLACEHOLDER.get(aspect_ratio, (32, 32))
+    _solid_png(out_path, rgb=_color_from_seed(seed or prompt), width=w, height=h)
     return out_path
 
 

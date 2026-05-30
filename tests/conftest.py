@@ -84,3 +84,30 @@ def fake_genai(monkeypatch):
     monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
     client._state = state
     return client
+
+
+# A 1x1 PNG, base64-encoded — what OpenAI images.generate returns (b64_json).
+_PNG_B64 = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMA"
+            "ASsJTYQAAAAASUVORK5CYII=")
+
+
+class _FakeImages:
+    def __init__(self, state):
+        self.state = state
+
+    def generate(self, model=None, prompt=None, n=1, size=None):
+        self.state.setdefault("image_calls", []).append({"prompt": prompt, "size": size})
+        datum = types.SimpleNamespace(b64_json=_PNG_B64, url=None)
+        return types.SimpleNamespace(data=[datum])
+
+
+@pytest.fixture
+def fake_openai(monkeypatch):
+    """Install a fake `openai.OpenAI`; returns the fake client instance."""
+    state = {"image_calls": []}
+    client = types.SimpleNamespace(images=_FakeImages(state))
+    fake_openai_mod = types.ModuleType("openai")
+    fake_openai_mod.OpenAI = lambda api_key=None: client
+    monkeypatch.setitem(sys.modules, "openai", fake_openai_mod)
+    client._state = state
+    return client

@@ -4,7 +4,7 @@ Keeps scripts thin and the data-source seam testable. Works in three escalating
 modes automatically:
   - no Supabase, no Gemini  -> bundled sample content + fallback copy + stub FB
   - Supabase, no Gemini     -> real content, fallback copy
-  - Supabase + Gemini       -> real content + LLM copy + Imagen images
+  - Supabase + Gemini       -> real content + LLM copy + OpenAI images
 The Facebook side is stub unless FACEBOOK_MODE=live with full creds.
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from . import creative as creative_mod
-from . import db, feedback, guardrails, llm, sample_data
+from . import db, eval as eval_mod, feedback, guardrails, images, llm, sample_data
 from .channels.registry import get_channel
 from .selection import Candidate, select_candidates
 
@@ -82,6 +82,15 @@ def run_ads(cfg, region: str, run_date: str, *, limit: Optional[int] = None,
         suggestions=inputs.suggestions, limit=limit,
     )
     channel = get_channel("facebook", cfg)
+    image_client = images.get_client(cfg.openai_api_key)
+    # Few-shot priming: fetch top past headlines once per language (Lau workflow).
+    winning_by_lang = {
+        lang: db.fetch_winning_creatives(
+            client, region, lang, limit=cfg.few_shot_examples_count,
+            lookback_days=cfg.few_shot_lookback_days)
+        if cfg.few_shot_enabled else []
+        for lang in langs
+    }
     results: List[AdResult] = []
     for cand in candidates:
         variants = cand.angle_variants(cfg.variants_per_topic)
@@ -89,9 +98,12 @@ def run_ads(cfg, region: str, run_date: str, *, limit: Optional[int] = None,
             for vi, angle in enumerate(variants):
                 spec = creative_mod.generate_creative(
                     cand, region, lang, cfg, client=genai_client,
-                    run_date=run_date, angle=angle)
+                    image_client=image_client, run_date=run_date, angle=angle,
+                    aspect_ratios=cfg.image_aspect_ratios,
+                    winning_examples=winning_by_lang.get(lang))
                 angle_type = spec.copy_style or cand.angle_type
                 guardrails.enforce_creative(spec)
+                _maybe_eval(cfg, cand, spec, lang, angle)
                 if spec.policy_status == "blocked":
                     results.append(AdResult(
                         cand.topic_id, region, lang, cand.topic_type, angle_type,
@@ -112,14 +124,36 @@ def run_ads(cfg, region: str, run_date: str, *, limit: Optional[int] = None,
 
 
 def _maybe_upload_image(cfg, client, spec, region: str, run_date: str, vi: int) -> None:
-    """Host the image in Supabase Storage when IMAGE_STORE=supabase."""
-    if cfg.image_store != "supabase" or client is None or not spec.image_path:
+    """Host images in Supabase Storage when IMAGE_STORE=supabase (all aspect ratios)."""
+    if cfg.image_store != "supabase" or client is None:
         return
-    from . import images
-    dest = f"{region}/{run_date}/{spec.topic_id}_{spec.lang}_v{vi}.png"
-    url = images.upload_to_supabase(client, "ad-creatives", dest, spec.image_path)
-    if url:
-        spec.image_url = url
+    paths = spec.meta.get("image_paths") or (
+        {"1:1": spec.image_path} if spec.image_path else {})
+    urls: Dict[str, str] = {}
+    for ar, path in paths.items():
+        dest = f"{region}/{run_date}/{spec.topic_id}_{spec.lang}_v{vi}_{ar.replace(':', '-')}.png"
+        url = images.upload_to_supabase(client, "ad-creatives", dest, path)
+        if url:
+            urls[ar] = url
+    if urls:
+        spec.meta["image_urls"] = urls
+        spec.image_url = urls.get("1:1") or next(iter(urls.values()))
+
+
+def _maybe_eval(cfg, cand, spec, lang: str, angle) -> None:
+    """Score LLM copy vs the fallback baseline when eval is enabled (Lau's
+    'cheap evals first'). Records to spec.meta['eval']; flags low-divergence for
+    review but never blocks (fail safe)."""
+    if not cfg.creative_quality_eval_enabled:
+        return
+    from .regions import get_region
+    baseline = creative_mod._fallback_copy(cand, lang, get_region(spec.region).country_name, angle)
+    llm_copy = {"primary_text": spec.primary_text, "headline": spec.headline,
+                "description": spec.description, "cta": spec.cta}
+    scores = eval_mod.compare_copy_quality(llm_copy, baseline)
+    spec.meta["eval"] = scores
+    if scores.get("baseline_divergence", 1.0) < cfg.copy_baseline_divergence_threshold:
+        spec.meta["eval_flag"] = "low_divergence_review"
 
 
 def run_insights(cfg, region: str, run_date: str, *, client=None,

@@ -7,6 +7,7 @@ network needed. (In live mode, drafts are also visible in Ads Manager.)
 """
 from __future__ import annotations
 
+import csv
 import html
 import json
 import os
@@ -52,6 +53,51 @@ def collect_drafts(artifacts_dir, date: str) -> List[Dict]:
             "_file": str(f),
         })
     return rows
+
+
+# Facebook Ads bulk-import column order (Ads Manager CSV import).
+_CSV_COLUMNS = [
+    "Campaign Name", "Ad Set Name", "Ad Name", "Campaign Objective",
+    "Ad Set Daily Budget", "Bid Strategy", "Countries", "Ad Status",
+    "Title", "Body", "Link Description", "Call to Action",
+    "Image Hash", "Website URL",
+]
+
+
+def _csv_row(r: Dict) -> Dict[str, object]:
+    ad_id = r.get("ad_id") or ""
+    budget = r.get("daily_budget")
+    countries = r.get("countries") or []
+    return {
+        "Campaign Name": f"phnews-{r.get('region')}-{r.get('topic_id')}",
+        "Ad Set Name": f"{ad_id} / adset",
+        "Ad Name": ad_id,
+        "Campaign Objective": r.get("objective") or "",
+        "Ad Set Daily Budget": (budget / 100.0) if isinstance(budget, (int, float)) else "",
+        "Bid Strategy": "LOWEST_COST_WITHOUT_CAP",
+        "Countries": ",".join(countries) if isinstance(countries, list) else (countries or ""),
+        "Ad Status": r.get("status") or "PAUSED",
+        "Title": r.get("headline") or "",
+        "Body": r.get("primary_text") or "",
+        "Link Description": r.get("description") or "",
+        "Call to Action": r.get("cta") or "",
+        "Image Hash": r.get("image_url") or r.get("image_path") or "",
+        "Website URL": r.get("link") or "",
+    }
+
+
+def export_csv(artifacts_dir, date: str, out_path: Optional[Path] = None) -> Path:
+    """Export PAUSED drafts as a Facebook-bulk-import-ready CSV (Lau workflow)."""
+    rows = collect_drafts(artifacts_dir, date)
+    out_dir = Path(out_path or artifacts_dir) / "csv"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = out_dir / f"{date}_facebook_bulk.csv"
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=_CSV_COLUMNS)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(_csv_row(r))
+    return csv_path
 
 
 def _img_src(row: Dict, out_path: Path) -> Optional[str]:

@@ -128,6 +128,66 @@ def fetch_creatives_by_id(client, creative_ids: Sequence[str]) -> Dict[str, Dict
     return out
 
 
+def fetch_winning_creatives(client, region: str, lang: Optional[str] = None,
+                            limit: int = 3, lookback_days: int = 7) -> List[Dict]:
+    """Top-performing past creatives by CTR, for few-shot copy priming.
+
+    Joins ad_insights -> ad_campaigns -> ad_creatives in Python (the client lacks
+    rich joins). Returns [{headline, primary_text, description, ctr, copy_style}]
+    for `region` (and `lang` if given), best first. No-op -> [] without a client.
+    """
+    if client is None:
+        return []
+    since_date = since(lookback_days)
+
+    def q_insights():
+        r = (client.table("ad_insights").select("campaign_id,ctr,insight_date")
+             .gte("insight_date", since_date).order("ctr", desc=True)
+             .limit(max(limit * 8, 40)).execute())
+        return r.data or []
+    insights = _safe(q_insights, [])
+    if not insights:
+        return []
+
+    campaign_ids = [i["campaign_id"] for i in insights if i.get("campaign_id")]
+    if not campaign_ids:
+        return []
+
+    def q_campaigns():
+        r = (client.table("ad_campaigns").select("id,creative_id,region")
+             .in_("id", list(dict.fromkeys(campaign_ids))).execute())
+        return r.data or []
+    campaigns = {c["id"]: c for c in _safe(q_campaigns, [])}
+
+    creative_ids = [c.get("creative_id") for c in campaigns.values()
+                    if c.get("creative_id")]
+    creatives = fetch_creatives_by_id(client, creative_ids)
+
+    out: List[Dict] = []
+    seen = set()
+    for i in insights:                       # already CTR-desc ordered
+        camp = campaigns.get(i.get("campaign_id"))
+        if not camp or camp.get("region") != region:
+            continue
+        cr = creatives.get(camp.get("creative_id"))
+        if not cr or (lang and cr.get("lang") != lang):
+            continue
+        key = cr.get("id")
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "headline": cr.get("headline"),
+            "primary_text": cr.get("primary_text"),
+            "description": cr.get("description"),
+            "copy_style": cr.get("copy_style"),
+            "ctr": i.get("ctr"),
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
 # -------------------------------------------------------------------- writes
 def write_creative(client, spec, region: str, run_date: str) -> Optional[str]:
     if client is None:

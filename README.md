@@ -15,7 +15,7 @@ Twitter slot in later.
 phnews ──writes──▶ Supabase (topics/angles/source_examples)
                         │  read
                         ▼
-   selection ─▶ creative (Gemini copy + Imagen image) ─▶ guardrails
+   selection ─▶ creative (Gemini copy + OpenAI gpt-image-2) ─▶ guardrails
                         │
                         ▼
    FacebookChannel ─▶ PAUSED Campaign▸AdSet▸AdCreative▸Ad  (stub or live)
@@ -38,35 +38,58 @@ cp .env.example .env            # all values optional; leave FB_* blank
 python scripts/run_daily_ads.py --region ph --mode stub
 python scripts/run_daily_insights.py --region ph
 python scripts/export_review.py                 # human-review HTML digest
+python scripts/export_facebook_bulk.py          # Facebook bulk-import CSV
 
 ls artifacts/drafts/            # PAUSED draft graphs (JSON)
 ls artifacts/images/            # generated / placeholder PNGs
 open artifacts/review/*.html    # review the drafts before launching
-python -m pytest                # 31 tests, fully offline
+cat artifacts/csv/*_facebook_bulk.csv
+python -m pytest                # 46 tests, fully offline
 ```
 
+Adapted from Anthropic growth-marketer **Austin Lau**'s Claude playbook:
+
+### Performance-data-informed copy (few-shot)
+Copy is primed with the **top-performing past headlines** (by CTR, last
+`FEW_SHOT_LOOKBACK_DAYS`) as in-prompt examples — closing the loop on *creative*,
+not just selection. Toggle `FEW_SHOT_ENABLED`; needs Supabase history (no-ops
+offline). See `db.fetch_winning_creatives` + `creative._format_few_shot_examples`.
+
+### Multi-aspect-ratio images (Facebook placements)
+`IMAGE_ASPECT_RATIOS=1:1,9:16,4:5` generates one image per ratio (OpenAI
+`gpt-image-2`, mapped to the nearest supported size) and serves them per
+placement via Facebook **`asset_feed_spec`**. `FB_PLACEMENTS=FEED,STORY,REELS`.
+
 ### A/B creative variants
-Set `VARIANTS_PER_TOPIC=2` (or more) to also build creatives from a topic's
-reddit/tiktok angles, not just the primary serious one. Each variant is a
-distinct ad with its own copy; the feedback loop then compares angle styles and
-re-weights selection. Default is `1` (primary serious angle only).
+`VARIANTS_PER_TOPIC=2`+ also builds creatives from a topic's reddit/tiktok
+angles; each variant is a distinct ad whose angle style the feedback loop
+compares and re-weights.
+
+### Facebook bulk CSV + review digest
+`export_review.py` renders a PAUSED-draft HTML for human approval;
+`export_facebook_bulk.py` writes an Ads-Manager bulk-import CSV.
+
+### Creative-quality eval
+`CREATIVE_QUALITY_EVAL_ENABLED=true` scores LLM copy vs the fallback baseline
+(length/CTA validity, divergence, specificity) and flags low-divergence copy for
+review — non-blocking ("cheap evals first"). See `adsmvp/eval.py`.
 
 ### Image hosting
 `IMAGE_STORE=local` (default) keeps PNGs as files. `IMAGE_STORE=supabase`
-uploads them to the `ad-creatives` Supabase Storage bucket and records the
-public URL on each creative.
+uploads all aspect ratios to the `ad-creatives` Storage bucket.
 
-With no Gemini key the tool uses deterministic fallback copy + placeholder
-images. With no Supabase it falls back to bundled sample content
-(`adsmvp/sample_data.py`). Add `GEMINI_API_KEY` and Supabase creds in `.env` to
-use real LLM copy/images and real phnews content.
+With no Gemini key → fallback template copy; no OpenAI key → placeholder PNGs;
+no Supabase → bundled sample content (`adsmvp/sample_data.py`). Add the keys in
+`.env` to use real LLM copy, real `gpt-image-2` images, and real phnews content.
 
 ## Configuration
 
-See `.env.example`. Key vars: `GEMINI_API_KEY`, `GEMINI_MODEL`, `IMAGEN_MODEL`,
+See `.env.example`. Key vars: `GEMINI_API_KEY`/`GEMINI_MODEL` (copy),
+`OPENAI_API_KEY`/`OPENAI_IMAGE_MODEL` (images), `IMAGE_ASPECT_RATIOS`,
 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (CI maps it from the secret
-`SUPABASE_SERVICE_ROLE_KEY`), `FACEBOOK_MODE`, `FB_*`, `LANDING_BASE_URL`,
-`DAILY_AD_BUDGET_CAP`, `DAILY_AD_LIMIT`, `ADS_DEDUPE_DAYS`.
+`SUPABASE_SERVICE_ROLE_KEY`), `FACEBOOK_MODE`, `FB_*`, `FB_PLACEMENTS`,
+`LANDING_BASE_URL`, `DAILY_AD_BUDGET_CAP`, `DAILY_AD_LIMIT`, `ADS_DEDUPE_DAYS`,
+`VARIANTS_PER_TOPIC`, `FEW_SHOT_*`, `CREATIVE_QUALITY_EVAL_ENABLED`.
 
 ## Database
 

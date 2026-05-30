@@ -51,24 +51,36 @@ class FacebookChannel(Channel):
 
     # ------------------------------------------------------------------ build
     def build_creative(self, spec: CreativeSpec) -> CreativeSpec:
-        """Upload the image and attach an image_hash (FB AdImage edge)."""
-        if not spec.image_path or not Path(spec.image_path).exists():
-            # No image -> the creative will be link-only; allowed but flagged.
+        """Upload every aspect-ratio image (FB AdImage edge) -> image_hashes.
+
+        Stores spec.meta['image_hashes'] = {aspect_ratio: hash} and sets
+        spec.image_hash to the primary (1:1, else first) for single-image fields.
+        """
+        paths: Dict[str, str] = spec.meta.get("image_paths") or (
+            {"1:1": spec.image_path} if spec.image_path else {})
+        hashes: Dict[str, str] = {}
+        for ar, path in paths.items():
+            if not path or not Path(path).exists():
+                continue
+            hashes[ar] = self._upload_image(Path(path))
+        if not hashes:
             spec.meta["image_missing"] = True
             return spec
-        data = Path(spec.image_path).read_bytes()
+        spec.meta["image_hashes"] = hashes
+        spec.image_hash = hashes.get("1:1") or next(iter(hashes.values()))
+        return spec
+
+    def _upload_image(self, path: Path) -> str:
+        data = path.read_bytes()
         if self.mode == "stub":
-            spec.image_hash = "stub_img_" + hashlib.sha256(data).hexdigest()[:16]
-            return spec
+            return "stub_img_" + hashlib.sha256(data).hexdigest()[:16]
         # live: POST /act_{acct}/adimages with raw bytes
         resp = self._post(
             f"/act_{self._acct()}/adimages",
             files={"filename": ("creative.png", data, "image/png")},
         )
-        images = resp.get("images", {})
-        first = next(iter(images.values()), {})
-        spec.image_hash = first.get("hash")
-        return spec
+        first = next(iter(resp.get("images", {}).values()), {})
+        return first.get("hash")
 
     # --------------------------------------------------------- create drafts
     def create_draft_campaign(self, spec: CreativeSpec, *, budget_cap_cents: int,
@@ -76,7 +88,7 @@ class FacebookChannel(Channel):
         region_cc = _country_code(spec.region)
         campaign_payload = {
             "name": campaign_name,
-            "objective": "OUTCOME_TRAFFIC",
+            "objective": self.cfg.fb_campaign_objective,
             "status": PAUSED,
             "special_ad_categories": [],
         }
@@ -87,9 +99,12 @@ class FacebookChannel(Channel):
             "status": PAUSED,
             "daily_budget": int(budget_cap_cents),
             "billing_event": "IMPRESSIONS",
-            "optimization_goal": "LINK_CLICKS",
-            "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
-            "targeting": {"geo_locations": {"countries": [region_cc]}},
+            "optimization_goal": self.cfg.fb_optimization_goal,
+            "bid_strategy": self.cfg.fb_bid_strategy,
+            "targeting": {
+                "geo_locations": {"countries": [region_cc]},
+                **_placement_targeting(self.cfg.fb_placements),
+            },
         }
         _assert_paused(adset_payload["status"])
 
@@ -105,15 +120,21 @@ class FacebookChannel(Channel):
         }
         if spec.image_hash:
             link_data["image_hash"] = spec.image_hash
-        creative_payload = {
-            "name": f"{campaign_name} / creative",
-            "object_story_spec": {
-                "page_id": self.cfg.fb_page_id or "PAGE_ID_PLACEHOLDER",
-                "link_data": link_data,
-            },
+        object_story_spec = {
+            "page_id": self.cfg.fb_page_id or "PAGE_ID_PLACEHOLDER",
+            "link_data": link_data,
         }
+        creative_payload: Dict[str, Any] = {
+            "name": f"{campaign_name} / creative",
+            "object_story_spec": object_story_spec,
+        }
+        # Multiple aspect ratios -> asset_feed_spec so Facebook serves the right
+        # image per placement (Feed 1:1, Story/Reel 9:16, ...).
+        hashes: Dict[str, str] = spec.meta.get("image_hashes") or {}
+        if len(hashes) > 1:
+            creative_payload["asset_feed_spec"] = _asset_feed_spec(spec, hashes)
         if self.cfg.fb_pixel_id:
-            creative_payload["object_story_spec"]["link_data"].setdefault(
+            link_data.setdefault(
                 "tracking_specs", {"action.type": "offsite_conversion",
                                    "fb_pixel": self.cfg.fb_pixel_id})
 
@@ -270,6 +291,61 @@ def _country_code(region: str) -> str:
 
 def _date_part(spec: CreativeSpec) -> str:
     return spec.meta.get("run_date") or "undated"
+
+
+# Facebook placement positions per requested placement (v1 mapping).
+_PLACEMENT_POSITIONS = {
+    "FEED": ("facebook", "feed"),
+    "STORY": ("facebook", "story"),
+    "STORIES": ("facebook", "story"),
+    "REELS": ("facebook", "facebook_reels"),
+    "REEL": ("facebook", "facebook_reels"),
+}
+# Which placement each aspect ratio is intended for (drives asset customization).
+_ASPECT_PLACEMENT = {"1:1": "FEED", "4:5": "FEED", "9:16": "STORY", "2:3": "STORY"}
+
+
+def _placement_targeting(placements) -> Dict[str, Any]:
+    """Derive publisher_platforms + *_positions from configured placements."""
+    platforms, fb_positions = set(), []
+    for p in placements or []:
+        plat, pos = _PLACEMENT_POSITIONS.get(str(p).upper(), ("facebook", "feed"))
+        platforms.add(plat)
+        if pos not in fb_positions:
+            fb_positions.append(pos)
+    if not platforms:
+        return {}
+    out: Dict[str, Any] = {"publisher_platforms": sorted(platforms)}
+    if fb_positions:
+        out["facebook_positions"] = fb_positions
+    return out
+
+
+def _placement_customization(aspect_ratio: str) -> Dict[str, Any]:
+    placement = _ASPECT_PLACEMENT.get(aspect_ratio, "FEED")
+    plat, pos = _PLACEMENT_POSITIONS.get(placement, ("facebook", "feed"))
+    return {"publisher_platforms": [plat], "facebook_positions": [pos]}
+
+
+def _asset_feed_spec(spec: CreativeSpec, hashes: Dict[str, str]) -> Dict[str, Any]:
+    """Build an asset_feed_spec so FB serves the right image per placement.
+
+    v1 maps each aspect ratio to a placement via asset_customization_rules.
+    """
+    return {
+        "images": [{"hash": h, "adlabels": [{"name": ar}]} for ar, h in hashes.items()],
+        "titles": [{"text": spec.headline}],
+        "bodies": [{"text": spec.primary_text}],
+        "descriptions": [{"text": spec.description}],
+        "link_urls": [{"website_url": spec.landing_url}],
+        "call_to_action_types": [spec.cta],
+        "ad_formats": ["SINGLE_IMAGE"],
+        "asset_customization_rules": [
+            {"image_label": {"name": ar},
+             "customization_spec": _placement_customization(ar)}
+            for ar in hashes
+        ],
+    }
 
 
 def _count_conversions(actions) -> int:

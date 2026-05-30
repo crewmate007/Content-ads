@@ -1,8 +1,11 @@
-"""Creative generation: topic + angle -> ad copy (Gemini) + image (Imagen).
+"""Creative generation: topic + angle -> ad copy (Gemini) + image (OpenAI).
 
-Bilingual (en/zh). Falls back to deterministic template copy + a placeholder
-image when no Gemini key is present, so the pipeline runs fully offline. The
-image prompt is editorial/illustrative and explicitly forbids gambling imagery.
+Bilingual (en/zh). Copy can be primed with few-shot examples drawn from recent
+top-performing ads (Austin Lau's performance-data-informed workflow). Images are
+generated per Facebook aspect ratio. Falls back to deterministic template copy +
+placeholder images with zero credentials, so the pipeline runs fully offline.
+The image prompt is editorial/illustrative and explicitly forbids gambling
+imagery.
 """
 from __future__ import annotations
 
@@ -10,6 +13,8 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional
 from urllib.parse import quote
+
+from typing import List
 
 from . import images, llm
 from .channels.base import DEFAULT_CTA, VALID_CTAS, CreativeSpec
@@ -23,7 +28,7 @@ Topic: {name}
 Narrative: {narrative}
 Forecasting question: {question}
 A grounding news fact: {fact}
-
+{winning_examples}
 Hard rules:
 - Frame it as following/forecasting an outcome, never as betting or guaranteed \
 winnings. No odds, payouts, "bet", "win big", or money promises.
@@ -40,6 +45,21 @@ aesthetic; subtle data/chart motif. ABSOLUTELY NO betting slips, casino chips, \
 dice, cards, money/cash, or odds. No text overlays, no logos."""
 
 LANG_NAMES = {"en": "English", "zh": "Simplified Chinese"}
+
+
+def _format_few_shot_examples(rows: Optional[List[Dict]]) -> str:
+    """Render recent winning headlines as in-prompt examples (Lau's workflow)."""
+    if not rows:
+        return ""
+    lines = ["", "High-performing past headlines (emulate the style, not the "
+             "wording; do NOT copy verbatim):"]
+    for r in rows:
+        ctr = r.get("ctr")
+        ctr_s = f" (CTR {ctr:.2f}%)" if isinstance(ctr, (int, float)) else ""
+        hl = (r.get("headline") or "").strip()
+        if hl:
+            lines.append(f'- "{hl}"{ctr_s}')
+    return "\n".join(lines) + "\n"
 
 
 def _question_for(cand: Candidate, lang: str, angle: Optional[Dict] = None) -> str:
@@ -100,9 +120,12 @@ def _fallback_copy(cand: Candidate, lang: str, country: str,
 
 
 def _gen_copy(cand: Candidate, lang: str, country: str, cfg, client,
-              angle: Optional[Dict] = None) -> Dict[str, str]:
+              angle: Optional[Dict] = None,
+              winning_examples: Optional[List[Dict]] = None) -> Dict[str, str]:
     if client is None:
         return _fallback_copy(cand, lang, country, angle)
+    examples = _format_few_shot_examples(
+        winning_examples if cfg.few_shot_enabled else None)
     prompt = COPY_PROMPT.format(
         lang_name=LANG_NAMES.get(lang, "English"),
         country=country,
@@ -110,6 +133,7 @@ def _gen_copy(cand: Candidate, lang: str, country: str, cfg, client,
         narrative=_clip(_narrative_for(cand, lang), 400),
         question=_question_for(cand, lang, angle),
         fact=_clip(_fact_for(cand, lang), 200),
+        winning_examples=examples,
     )
     try:
         data = llm.generate_json(client, cfg.gemini_model, prompt)
@@ -143,29 +167,40 @@ def _copy_style(angle: Optional[Dict]) -> str:
 
 
 def generate_creative(cand: Candidate, region: str, lang: str, cfg, *,
-                      client=None, run_date: str = "undated",
-                      angle: Optional[Dict] = None) -> CreativeSpec:
+                      client=None, image_client=None, run_date: str = "undated",
+                      angle: Optional[Dict] = None,
+                      aspect_ratios: Optional[List[str]] = None,
+                      winning_examples: Optional[List[Dict]] = None) -> CreativeSpec:
     """Produce a CreativeSpec (copy + image) for one candidate / language / angle.
 
     `angle` defaults to the candidate's primary angle; pass an alternate angle
-    (reddit/tiktok) to build an A/B variant with different copy.
+    (reddit/tiktok) to build an A/B variant with different copy. `client` is the
+    Gemini client for copy; `image_client` is the OpenAI client for images. One
+    image is generated per aspect ratio (Facebook placements).
     """
     from .regions import get_region
     rc = get_region(region)
     angle = angle if angle is not None else cand.primary_angle
-    copy = _gen_copy(cand, lang, rc.country_name, cfg, client, angle)
+    copy = _gen_copy(cand, lang, rc.country_name, cfg, client, angle, winning_examples)
 
     akey = _angle_key(angle)
+    ratios = aspect_ratios or cfg.image_aspect_ratios or ["1:1"]
     img_dir = Path(cfg.artifacts_dir) / "images" / region / run_date
-    img_path = img_dir / f"{cand.topic_id}_{lang}_{akey}.png"
     image_prompt = IMAGE_PROMPT.format(name=_name_for(cand, "en") or cand.topic.get("name"),
                                        country=rc.country_name)
-    images.generate_image(
-        image_prompt, img_path,
-        client=client if cfg.has_gemini else None,
-        model=cfg.imagen_model,
-        seed=f"{cand.topic_id}|{lang}|{akey}",
-    )
+    image_paths: Dict[str, str] = {}
+    for ar in ratios:
+        p = img_dir / f"{cand.topic_id}_{lang}_{akey}_{ar.replace(':', '-')}.png"
+        images.generate_image(
+            image_prompt, p,
+            client=image_client,
+            model=cfg.openai_image_model,
+            seed=f"{cand.topic_id}|{lang}|{akey}|{ar}",
+            aspect_ratio=ar,
+        )
+        image_paths[ar] = str(p)
+    # Primary image for single-image fields: prefer 1:1, else the first ratio.
+    primary_path = image_paths.get("1:1") or next(iter(image_paths.values()), None)
 
     spec = CreativeSpec(
         topic_id=cand.topic_id,
@@ -177,11 +212,11 @@ def generate_creative(cand: Candidate, region: str, lang: str, cfg, *,
         description=copy["description"],
         cta=copy["cta"],
         landing_url=_landing_url(cfg, cand),
-        image_path=str(img_path),
+        image_path=primary_path,
         copy_style=_copy_style(angle),
         model_copy=cfg.gemini_model if client is not None else "fallback-template",
-        model_image=cfg.imagen_model if cfg.has_gemini else "placeholder",
+        model_image=cfg.openai_image_model if image_client is not None else "placeholder",
         meta={"run_date": run_date, "image_prompt": image_prompt,
-              "angle_key": akey},
+              "angle_key": akey, "image_paths": image_paths},
     )
     return spec

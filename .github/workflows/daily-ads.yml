@@ -32,7 +32,9 @@ jobs:
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.5-flash' }}
-      IMAGEN_MODEL: ${{ vars.IMAGEN_MODEL || 'imagen-4.0-generate-001' }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_IMAGE_MODEL: ${{ vars.OPENAI_IMAGE_MODEL || 'gpt-image-2' }}
+      IMAGE_ASPECT_RATIOS: ${{ vars.IMAGE_ASPECT_RATIOS || '1:1' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       # Same mapping as phnews: local var SUPABASE_SERVICE_KEY <- CI secret.
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -41,9 +43,12 @@ jobs:
       FB_AD_ACCOUNT_ID: ${{ secrets.FB_AD_ACCOUNT_ID }}
       FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
       FB_PIXEL_ID: ${{ secrets.FB_PIXEL_ID }}
+      FB_PLACEMENTS: ${{ vars.FB_PLACEMENTS || 'FEED' }}
       LANDING_BASE_URL: ${{ vars.LANDING_BASE_URL || 'https://phnews.example/ph' }}
       DAILY_AD_BUDGET_CAP: ${{ vars.DAILY_AD_BUDGET_CAP || '2000' }}
       DAILY_AD_LIMIT: ${{ vars.DAILY_AD_LIMIT || '3' }}
+      VARIANTS_PER_TOPIC: ${{ vars.VARIANTS_PER_TOPIC || '1' }}
+      FEW_SHOT_ENABLED: ${{ vars.FEW_SHOT_ENABLED || 'true' }}
 
     steps:
       - uses: actions/checkout@v5
@@ -72,17 +77,19 @@ jobs:
             python scripts/run_daily_ads.py --region "$r" --date "$TODAY"
           done
 
-      - name: Export human-review digest
+      - name: Export human-review digest + Facebook bulk CSV
         run: |
           TODAY="$(date -u +%F)"
           python scripts/export_review.py --date "$TODAY"
+          python scripts/export_facebook_bulk.py --date "$TODAY"
 
       - name: Commit draft + review artifacts
         run: |
           TODAY="$(date -u +%F)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f "artifacts/drafts/${TODAY}" "artifacts/review/${TODAY}.html" 2>/dev/null || true
+          git add -f "artifacts/drafts/${TODAY}" "artifacts/review/${TODAY}.html" \
+                     "artifacts/csv/${TODAY}_facebook_bulk.csv" 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No new draft artifacts to commit."
           else

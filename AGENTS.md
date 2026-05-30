@@ -27,11 +27,12 @@ content-feedback loop.
 | `sample_data.py` | offline content fixtures matching Supabase shape |
 | `selection.py` | pure filter/de-dupe/rank → `Candidate`; `feedback_bonus` |
 | `guardrails.py` | `screen_topic` (election/sensitive) + `enforce_creative` (gambling lexicon) |
-| `images.py` | **single image backend boundary**: Imagen or stdlib placeholder PNG |
-| `creative.py` | topic+angle → `CreativeSpec` (Gemini copy + image), bilingual |
+| `images.py` | **single image backend boundary**: OpenAI `gpt-image-2` (aspect→size) or stdlib placeholder PNG; Supabase Storage upload |
+| `creative.py` | topic+angle → `CreativeSpec` (Gemini copy + OpenAI image), bilingual, few-shot priming, multi-aspect-ratio |
 | `feedback.py` | statistical aggregate → suggestions; LLM only narrates |
-| `review.py` | render PAUSED-draft artifacts into a human-review HTML digest |
-| `pipeline.py` | orchestration glue used by both scripts (selection→creative→draft, A/B variants, optional Supabase image upload) |
+| `eval.py` | scrappy creative-quality eval (LLM copy vs baseline); pure functions |
+| `review.py` | PAUSED-draft → human-review HTML (`render_html`) + Facebook bulk CSV (`export_csv`) |
+| `pipeline.py` | orchestration glue (selection→creative→draft, A/B + multi-aspect, few-shot fetch, optional eval + Supabase upload) |
 | `channels/base.py` | `Channel` ABC + `CreativeSpec`/`DraftResult`/`InsightRow` |
 | `channels/facebook.py` | stub + live Marketing API graph (Campaign▸AdSet▸AdCreative▸Ad) |
 | `channels/stub.py` | deterministic IDs, synthetic insights, artifact writer |
@@ -50,13 +51,23 @@ content-feedback loop.
 `content_suggestions` → `selection.feedback_bonus` re-weights tomorrow.
 
 ## Tests
-`python -m pytest` — 31 offline tests. `tests/conftest.py` fakes `google.genai`
-(copy + Imagen) and pins a tmp artifacts dir; Facebook runs in stub mode.
+`python -m pytest` — 46 offline tests. `tests/conftest.py` fakes `google.genai`
+(copy), `openai` (`fake_openai`, images), and pins a tmp artifacts dir; Facebook
+runs in stub mode.
 
 ## Done in Phase 2
 - A/B creative variants from reddit/tiktok angles (`VARIANTS_PER_TOPIC`).
 - Supabase Storage image hosting (`IMAGE_STORE=supabase`).
 - `review.py` + `scripts/export_review.py` human-approval HTML digest.
+
+## Done in Phase 3 (Austin Lau playbook, Facebook)
+- Image backend switched to OpenAI `gpt-image-2` (`images.py`).
+- Performance-data-informed copy: few-shot winning headlines
+  (`db.fetch_winning_creatives` → `creative` prompt), `FEW_SHOT_*`.
+- Multi-aspect-ratio images per FB placement via `asset_feed_spec`
+  (`IMAGE_ASPECT_RATIOS`, `FB_PLACEMENTS`).
+- Facebook bulk-import CSV (`review.export_csv` + `scripts/export_facebook_bulk.py`).
+- Creative-quality eval harness (`adsmvp/eval.py`, `CREATIVE_QUALITY_EVAL_ENABLED`).
 
 ## Known follow-ups
 - Live FB path needs App Review + `ads_management`/`ads_read` + page/business
