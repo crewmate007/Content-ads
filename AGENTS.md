@@ -1,0 +1,60 @@
+# AGENTS.md — Content-ads architecture
+
+Notes for Claude Code / Codex collaborators. Sibling repo: **phnews** (the
+content source). This repo turns that content into Facebook ad drafts and a
+content-feedback loop.
+
+## Principles (inherited from phnews)
+- **Lazy-import heavy deps** (`google-genai`, `supabase`, `requests`) inside
+  functions so the package imports and tests run with none of them installed.
+- **Never raise across boundaries** for I/O: `db.py` and channel HTTP swallow +
+  log to stderr and return safe defaults. A Supabase/FB outage must not crash a
+  daily run.
+- **No-op without credentials**: missing Gemini → fallback copy + placeholder
+  images; missing Supabase → bundled `sample_data` + writes skipped; missing FB
+  creds → stub.
+- **v1 invariant — PAUSED only.** No code path launches or spends. `facebook.py`
+  `_assert_paused()` hard-fails any non-PAUSED status; tests assert "ACTIVE"
+  never appears in a draft graph.
+
+## Module map (`adsmvp/`)
+| File | Role |
+|---|---|
+| `config.py` | env/.env loading, `AdsConfig`, shape-only diagnostics |
+| `llm.py` | genai client + `parse_json_response` + retry (copied from phnews) |
+| `regions.py` | ph/id config incl. FB geo country code |
+| `db.py` | Supabase read (content) + write (ad tables); no-op without creds |
+| `sample_data.py` | offline content fixtures matching Supabase shape |
+| `selection.py` | pure filter/de-dupe/rank → `Candidate`; `feedback_bonus` |
+| `guardrails.py` | `screen_topic` (election/sensitive) + `enforce_creative` (gambling lexicon) |
+| `images.py` | **single image backend boundary**: Imagen or stdlib placeholder PNG |
+| `creative.py` | topic+angle → `CreativeSpec` (Gemini copy + image), bilingual |
+| `feedback.py` | statistical aggregate → suggestions; LLM only narrates |
+| `pipeline.py` | orchestration glue used by both scripts |
+| `channels/base.py` | `Channel` ABC + `CreativeSpec`/`DraftResult`/`InsightRow` |
+| `channels/facebook.py` | stub + live Marketing API graph (Campaign▸AdSet▸AdCreative▸Ad) |
+| `channels/stub.py` | deterministic IDs, synthetic insights, artifact writer |
+| `channels/registry.py` | `get_channel(name, cfg)` — add Google/Twitter here |
+
+## Adding a channel
+1. New `channels/<name>.py` implementing `Channel` (build_creative,
+   create_draft_campaign → PAUSED, fetch_insights).
+2. Register it in `channels/registry.py`.
+3. Orchestration is unchanged (`pipeline.run_ads` is channel-agnostic).
+
+## Data flow
+`runs/topics/angles/source_examples` (phnews, read-only) → `selection` →
+`creative` → `guardrails` → `FacebookChannel` → `ad_creatives` + `ad_campaigns`
+(PAUSED) → `run_daily_insights` → `ad_insights` → `feedback` →
+`content_suggestions` → `selection.feedback_bonus` re-weights tomorrow.
+
+## Tests
+`python -m pytest` — 26 offline tests. `tests/conftest.py` fakes `google.genai`
+(copy + Imagen) and pins a tmp artifacts dir; Facebook runs in stub mode.
+
+## Known follow-ups (post-MVP)
+- Live FB path needs App Review + `ads_management`/`ads_read` + page/business
+  perms; gambling/prediction-market ads need FB written permission + geo
+  eligibility. Position as "forecasting", not "betting".
+- Supabase Storage for images (`IMAGE_STORE=supabase`), currently local files.
+- A/B creative variants from reddit/tiktok angles; `export_review.py` digest.

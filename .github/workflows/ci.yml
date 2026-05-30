@@ -1,0 +1,28 @@
+name: CI
+
+# Offline test suite on every push / PR. Runs fully without credentials:
+# heavy deps (google-genai, supabase, requests) are lazy-imported and faked,
+# the Facebook side is stubbed, and content falls back to bundled samples.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Run tests
+        run: python -m pytest

@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+.DS_Store
+# Generated ad drafts + images. Keep the directory, ignore its contents.
+artifacts/*
+!artifacts/.gitkeep
