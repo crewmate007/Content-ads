@@ -129,7 +129,7 @@ class FacebookChannel(Channel):
 
     def _draft_stub(self, spec, campaign_name, budget_cap_cents,
                     campaign_payload, adset_payload, creative_payload) -> DraftResult:
-        seed = f"{spec.topic_id}|{spec.lang}|{spec.region}"
+        seed = f"{spec.topic_id}|{spec.lang}|{spec.region}|{spec.meta.get('angle_key', 'primary')}"
         cid = stubmod.deterministic_id("campaign", seed)
         sid = stubmod.deterministic_id("adset", seed)
         crid = stubmod.deterministic_id("creative", seed)
@@ -145,6 +145,9 @@ class FacebookChannel(Channel):
             "topic_id": spec.topic_id,
             "angle_id": spec.angle_id,
             "policy_status": spec.policy_status,
+            "copy_style": spec.copy_style,
+            "image_path": spec.image_path,
+            "image_url": spec.image_url,
             "endpoints": {
                 "campaign": {"path": f"/act_{self._acct()}/campaigns",
                              "payload": campaign_payload, "returns": cid},

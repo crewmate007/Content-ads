@@ -42,8 +42,8 @@ dice, cards, money/cash, or odds. No text overlays, no logos."""
 LANG_NAMES = {"en": "English", "zh": "Simplified Chinese"}
 
 
-def _question_for(cand: Candidate, lang: str) -> str:
-    a = cand.primary_angle or {}
+def _question_for(cand: Candidate, lang: str, angle: Optional[Dict] = None) -> str:
+    a = angle or cand.primary_angle or {}
     if lang == "zh":
         return (a.get("question_zh") or cand.topic.get("suggested_question_zh")
                 or cand.topic.get("name_zh") or "")
@@ -80,8 +80,9 @@ def _clip(text: str, n: int) -> str:
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
 
 
-def _fallback_copy(cand: Candidate, lang: str, country: str) -> Dict[str, str]:
-    q = _question_for(cand, lang)
+def _fallback_copy(cand: Candidate, lang: str, country: str,
+                   angle: Optional[Dict] = None) -> Dict[str, str]:
+    q = _question_for(cand, lang, angle)
     name = _name_for(cand, lang)
     if lang == "zh":
         return {
@@ -98,15 +99,16 @@ def _fallback_copy(cand: Candidate, lang: str, country: str) -> Dict[str, str]:
     }
 
 
-def _gen_copy(cand: Candidate, lang: str, country: str, cfg, client) -> Dict[str, str]:
+def _gen_copy(cand: Candidate, lang: str, country: str, cfg, client,
+              angle: Optional[Dict] = None) -> Dict[str, str]:
     if client is None:
-        return _fallback_copy(cand, lang, country)
+        return _fallback_copy(cand, lang, country, angle)
     prompt = COPY_PROMPT.format(
         lang_name=LANG_NAMES.get(lang, "English"),
         country=country,
         name=_name_for(cand, lang),
         narrative=_clip(_narrative_for(cand, lang), 400),
-        question=_question_for(cand, lang),
+        question=_question_for(cand, lang, angle),
         fact=_clip(_fact_for(cand, lang), 200),
     )
     try:
@@ -114,7 +116,7 @@ def _gen_copy(cand: Candidate, lang: str, country: str, cfg, client) -> Dict[str
     except Exception as exc:  # noqa: BLE001
         print(f"[WARN] copy generation failed ({type(exc).__name__}: {exc}); "
               "using fallback", file=sys.stderr)
-        return _fallback_copy(cand, lang, country)
+        return _fallback_copy(cand, lang, country, angle)
     return {
         "primary_text": _clip(str(data.get("primary_text") or ""), 125),
         "headline": _clip(str(data.get("headline") or ""), 40),
@@ -129,27 +131,45 @@ def _landing_url(cfg, cand: Candidate) -> str:
     return f"{base}?topic={quote(str(tid))}" if tid else base
 
 
+def _angle_key(angle: Optional[Dict]) -> str:
+    if not angle:
+        return "primary"
+    return str(angle.get("id") or angle.get("position") or "primary")
+
+
+def _copy_style(angle: Optional[Dict]) -> str:
+    atype = (angle or {}).get("angle_type", "serious_candidate")
+    return "serious" if atype == "serious_candidate" else atype
+
+
 def generate_creative(cand: Candidate, region: str, lang: str, cfg, *,
-                      client=None, run_date: str = "undated") -> CreativeSpec:
-    """Produce a CreativeSpec (copy + image) for one candidate in one language."""
+                      client=None, run_date: str = "undated",
+                      angle: Optional[Dict] = None) -> CreativeSpec:
+    """Produce a CreativeSpec (copy + image) for one candidate / language / angle.
+
+    `angle` defaults to the candidate's primary angle; pass an alternate angle
+    (reddit/tiktok) to build an A/B variant with different copy.
+    """
     from .regions import get_region
     rc = get_region(region)
-    copy = _gen_copy(cand, lang, rc.country_name, cfg, client)
+    angle = angle if angle is not None else cand.primary_angle
+    copy = _gen_copy(cand, lang, rc.country_name, cfg, client, angle)
 
+    akey = _angle_key(angle)
     img_dir = Path(cfg.artifacts_dir) / "images" / region / run_date
-    img_path = img_dir / f"{cand.topic_id}_{lang}.png"
+    img_path = img_dir / f"{cand.topic_id}_{lang}_{akey}.png"
     image_prompt = IMAGE_PROMPT.format(name=_name_for(cand, "en") or cand.topic.get("name"),
                                        country=rc.country_name)
     images.generate_image(
         image_prompt, img_path,
         client=client if cfg.has_gemini else None,
         model=cfg.imagen_model,
-        seed=f"{cand.topic_id}|{lang}",
+        seed=f"{cand.topic_id}|{lang}|{akey}",
     )
 
     spec = CreativeSpec(
         topic_id=cand.topic_id,
-        angle_id=(cand.primary_angle or {}).get("id"),
+        angle_id=(angle or {}).get("id"),
         region=region,
         lang=lang,
         primary_text=copy["primary_text"],
@@ -158,9 +178,10 @@ def generate_creative(cand: Candidate, region: str, lang: str, cfg, *,
         cta=copy["cta"],
         landing_url=_landing_url(cfg, cand),
         image_path=str(img_path),
-        copy_style="serious" if cand.angle_type == "serious_candidate" else cand.angle_type,
+        copy_style=_copy_style(angle),
         model_copy=cfg.gemini_model if client is not None else "fallback-template",
         model_image=cfg.imagen_model if cfg.has_gemini else "placeholder",
-        meta={"run_date": run_date, "image_prompt": image_prompt},
+        meta={"run_date": run_date, "image_prompt": image_prompt,
+              "angle_key": akey},
     )
     return spec

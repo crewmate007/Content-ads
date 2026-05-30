@@ -80,6 +80,7 @@ class AdsConfig:
     daily_ad_budget_cap: int    # cents
     daily_ad_limit: int
     ads_dedupe_days: int
+    variants_per_topic: int     # A/B creatives per (topic, lang): 1 = primary only
     image_store: str            # "local" | "supabase"
     artifacts_dir: Path = ARTIFACTS_DIR
     weights: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
@@ -122,6 +123,7 @@ def load_config() -> AdsConfig:
         daily_ad_budget_cap=_env_int("DAILY_AD_BUDGET_CAP", 2000),
         daily_ad_limit=_env_int("DAILY_AD_LIMIT", 3),
         ads_dedupe_days=_env_int("ADS_DEDUPE_DAYS", 14),
+        variants_per_topic=max(1, _env_int("VARIANTS_PER_TOPIC", 1)),
         image_store=(_env("IMAGE_STORE", "local") or "local").lower(),
         weights=weights,
     )

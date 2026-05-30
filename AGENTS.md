@@ -30,7 +30,8 @@ content-feedback loop.
 | `images.py` | **single image backend boundary**: Imagen or stdlib placeholder PNG |
 | `creative.py` | topic+angle → `CreativeSpec` (Gemini copy + image), bilingual |
 | `feedback.py` | statistical aggregate → suggestions; LLM only narrates |
-| `pipeline.py` | orchestration glue used by both scripts |
+| `review.py` | render PAUSED-draft artifacts into a human-review HTML digest |
+| `pipeline.py` | orchestration glue used by both scripts (selection→creative→draft, A/B variants, optional Supabase image upload) |
 | `channels/base.py` | `Channel` ABC + `CreativeSpec`/`DraftResult`/`InsightRow` |
 | `channels/facebook.py` | stub + live Marketing API graph (Campaign▸AdSet▸AdCreative▸Ad) |
 | `channels/stub.py` | deterministic IDs, synthetic insights, artifact writer |
@@ -49,12 +50,16 @@ content-feedback loop.
 `content_suggestions` → `selection.feedback_bonus` re-weights tomorrow.
 
 ## Tests
-`python -m pytest` — 26 offline tests. `tests/conftest.py` fakes `google.genai`
+`python -m pytest` — 31 offline tests. `tests/conftest.py` fakes `google.genai`
 (copy + Imagen) and pins a tmp artifacts dir; Facebook runs in stub mode.
 
-## Known follow-ups (post-MVP)
+## Done in Phase 2
+- A/B creative variants from reddit/tiktok angles (`VARIANTS_PER_TOPIC`).
+- Supabase Storage image hosting (`IMAGE_STORE=supabase`).
+- `review.py` + `scripts/export_review.py` human-approval HTML digest.
+
+## Known follow-ups
 - Live FB path needs App Review + `ads_management`/`ads_read` + page/business
   perms; gambling/prediction-market ads need FB written permission + geo
   eligibility. Position as "forecasting", not "betting".
-- Supabase Storage for images (`IMAGE_STORE=supabase`), currently local files.
-- A/B creative variants from reddit/tiktok angles; `export_review.py` digest.
+- Persisted review_state workflow (approve → launch) once live creds exist.

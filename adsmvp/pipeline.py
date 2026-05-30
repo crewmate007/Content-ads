@@ -84,26 +84,42 @@ def run_ads(cfg, region: str, run_date: str, *, limit: Optional[int] = None,
     channel = get_channel("facebook", cfg)
     results: List[AdResult] = []
     for cand in candidates:
+        variants = cand.angle_variants(cfg.variants_per_topic)
         for lang in langs:
-            spec = creative_mod.generate_creative(
-                cand, region, lang, cfg, client=genai_client, run_date=run_date)
-            guardrails.enforce_creative(spec)
-            if spec.policy_status == "blocked":
+            for vi, angle in enumerate(variants):
+                spec = creative_mod.generate_creative(
+                    cand, region, lang, cfg, client=genai_client,
+                    run_date=run_date, angle=angle)
+                angle_type = spec.copy_style or cand.angle_type
+                guardrails.enforce_creative(spec)
+                if spec.policy_status == "blocked":
+                    results.append(AdResult(
+                        cand.topic_id, region, lang, cand.topic_type, angle_type,
+                        spec.policy_status, skipped=spec.policy_notes))
+                    continue
+                _maybe_upload_image(cfg, client, spec, region, run_date, vi)
+                spec = channel.build_creative(spec)
+                draft = channel.create_draft_campaign(
+                    spec, budget_cap_cents=cfg.daily_ad_budget_cap,
+                    campaign_name=f"phnews-{region}-{run_date}-{cand.topic_id}-{lang}-v{vi}")
+                assert draft.status == "PAUSED", "v1 must only create PAUSED drafts"
+                creative_id = db.write_creative(client, spec, region, run_date)
+                db.write_campaign(client, draft, spec, creative_id, region, run_date)
                 results.append(AdResult(
-                    cand.topic_id, region, lang, cand.topic_type, cand.angle_type,
-                    spec.policy_status, skipped=spec.policy_notes))
-                continue
-            spec = channel.build_creative(spec)
-            draft = channel.create_draft_campaign(
-                spec, budget_cap_cents=cfg.daily_ad_budget_cap,
-                campaign_name=f"phnews-{region}-{run_date}-{cand.topic_id}-{lang}")
-            assert draft.status == "PAUSED", "v1 must only create PAUSED drafts"
-            creative_id = db.write_creative(client, spec, region, run_date)
-            db.write_campaign(client, draft, spec, creative_id, region, run_date)
-            results.append(AdResult(
-                cand.topic_id, region, lang, cand.topic_type, cand.angle_type,
-                spec.policy_status, ad_id=draft.external_ad_id))
+                    cand.topic_id, region, lang, cand.topic_type, angle_type,
+                    spec.policy_status, ad_id=draft.external_ad_id))
     return results
+
+
+def _maybe_upload_image(cfg, client, spec, region: str, run_date: str, vi: int) -> None:
+    """Host the image in Supabase Storage when IMAGE_STORE=supabase."""
+    if cfg.image_store != "supabase" or client is None or not spec.image_path:
+        return
+    from . import images
+    dest = f"{region}/{run_date}/{spec.topic_id}_{spec.lang}_v{vi}.png"
+    url = images.upload_to_supabase(client, "ad-creatives", dest, spec.image_path)
+    if url:
+        spec.image_url = url
 
 
 def run_insights(cfg, region: str, run_date: str, *, client=None,

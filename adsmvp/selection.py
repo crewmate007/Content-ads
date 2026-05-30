@@ -29,6 +29,7 @@ class Candidate:
     topic: Dict
     primary_angle: Optional[Dict]
     source_examples: List[Dict] = field(default_factory=list)
+    alt_angles: List[Dict] = field(default_factory=list)
     rank: float = 0.0
     rank_parts: Dict[str, float] = field(default_factory=dict)
 
@@ -43,6 +44,15 @@ class Candidate:
     @property
     def angle_type(self) -> str:
         return (self.primary_angle or {}).get("angle_type", "serious_candidate")
+
+    def angle_variants(self, n: int) -> List[Optional[Dict]]:
+        """Up to n distinct angles for A/B variants: primary first, then alts."""
+        variants: List[Optional[Dict]] = [self.primary_angle]
+        for a in self.alt_angles:
+            if len(variants) >= max(1, n):
+                break
+            variants.append(a)
+        return variants
 
 
 def _pick_primary_angle(angles: Sequence[Dict]) -> Optional[Dict]:
@@ -137,9 +147,11 @@ def select_candidates(
             seen_names.add(nm)
 
         angles = angles_by_topic.get(tid, [])
+        primary = _pick_primary_angle(angles)
         cand = Candidate(
             topic=t,
-            primary_angle=_pick_primary_angle(angles),
+            primary_angle=primary,
+            alt_angles=[a for a in angles if a is not primary],
             source_examples=source_examples_by_topic.get(tid, [])[:2],
         )
         _rank(cand, weights, suggestions)

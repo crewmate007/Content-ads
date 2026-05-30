@@ -37,11 +37,24 @@ cp .env.example .env            # all values optional; leave FB_* blank
 
 python scripts/run_daily_ads.py --region ph --mode stub
 python scripts/run_daily_insights.py --region ph
+python scripts/export_review.py                 # human-review HTML digest
 
 ls artifacts/drafts/            # PAUSED draft graphs (JSON)
 ls artifacts/images/            # generated / placeholder PNGs
-python -m pytest                # 26 tests, fully offline
+open artifacts/review/*.html    # review the drafts before launching
+python -m pytest                # 31 tests, fully offline
 ```
+
+### A/B creative variants
+Set `VARIANTS_PER_TOPIC=2` (or more) to also build creatives from a topic's
+reddit/tiktok angles, not just the primary serious one. Each variant is a
+distinct ad with its own copy; the feedback loop then compares angle styles and
+re-weights selection. Default is `1` (primary serious angle only).
+
+### Image hosting
+`IMAGE_STORE=local` (default) keeps PNGs as files. `IMAGE_STORE=supabase`
+uploads them to the `ad-creatives` Supabase Storage bucket and records the
+public URL on each creative.
 
 With no Gemini key the tool uses deterministic fallback copy + placeholder
 images. With no Supabase it falls back to bundled sample content

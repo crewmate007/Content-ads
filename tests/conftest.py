@@ -26,7 +26,8 @@ def make_cfg(tmp_path, **overrides) -> AdsConfig:
         facebook_mode="stub", fb_access_token=None, fb_ad_account_id=None,
         fb_page_id=None, fb_pixel_id=None, channels=["facebook"],
         landing_base_url="https://phnews.example/ph", daily_ad_budget_cap=2000,
-        daily_ad_limit=3, ads_dedupe_days=14, image_store="local",
+        daily_ad_limit=3, ads_dedupe_days=14, variants_per_topic=1,
+        image_store="local",
         artifacts_dir=Path(tmp_path), weights=dict(DEFAULT_WEIGHTS),
     )
     base.update(overrides)

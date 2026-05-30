@@ -74,3 +74,27 @@ def generate_image(prompt: str, out_path: Path, *, client=None, model: str = "",
 
     _solid_png(out_path, rgb=_color_from_seed(seed or prompt))
     return out_path
+
+
+def upload_to_supabase(client, bucket: str, dest_path: str,
+                       local_path: Path) -> Optional[str]:
+    """Upload an image to a Supabase Storage bucket and return its public URL.
+
+    No-op (returns None) without a client. Never raises — image hosting must not
+    break a daily run. Used when IMAGE_STORE=supabase.
+    """
+    if client is None:
+        return None
+    try:
+        data = Path(local_path).read_bytes()
+        storage = client.storage.from_(bucket)
+        try:
+            storage.upload(dest_path, data,
+                           {"content-type": "image/png", "upsert": "true"})
+        except Exception:  # noqa: BLE001 — already exists / transient; try update
+            storage.update(dest_path, data, {"content-type": "image/png"})
+        return storage.get_public_url(dest_path)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WARN] Supabase Storage upload failed "
+              f"({type(exc).__name__}: {exc})", file=sys.stderr)
+        return None
