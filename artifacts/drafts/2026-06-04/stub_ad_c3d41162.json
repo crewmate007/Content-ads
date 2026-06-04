@@ -1,0 +1,85 @@
+{
+  "channel": "facebook",
+  "mode": "stub",
+  "region": "ph",
+  "lang": "en",
+  "topic_id": "t-fuel-001",
+  "angle_id": "a-fuel-s",
+  "policy_status": "pass",
+  "copy_style": "serious",
+  "image_path": "/home/runner/work/Content-ads/Content-ads/artifacts/images/ph/2026-06-04/t-fuel-001_en_a-fuel-s_1-1.png",
+  "image_url": null,
+  "endpoints": {
+    "campaign": {
+      "path": "/act_ACT_PLACEHOLDER/campaigns",
+      "payload": {
+        "name": "phnews-ph-2026-06-04-t-fuel-001-en-v0",
+        "objective": "OUTCOME_TRAFFIC",
+        "status": "PAUSED",
+        "special_ad_categories": []
+      },
+      "returns": "stub_campaign_c3d41162"
+    },
+    "adset": {
+      "path": "/act_ACT_PLACEHOLDER/adsets",
+      "payload": {
+        "name": "phnews-ph-2026-06-04-t-fuel-001-en-v0 / adset",
+        "status": "PAUSED",
+        "daily_budget": 2000,
+        "billing_event": "IMPRESSIONS",
+        "optimization_goal": "LINK_CLICKS",
+        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+        "targeting": {
+          "geo_locations": {
+            "countries": [
+              "PH"
+            ]
+          },
+          "publisher_platforms": [
+            "facebook"
+          ],
+          "facebook_positions": [
+            "feed"
+          ]
+        },
+        "campaign_id": "stub_campaign_c3d41162"
+      },
+      "returns": "stub_adset_c3d41162"
+    },
+    "adcreative": {
+      "path": "/act_ACT_PLACEHOLDER/adcreatives",
+      "payload": {
+        "name": "phnews-ph-2026-06-04-t-fuel-001-en-v0 / creative",
+        "object_story_spec": {
+          "page_id": "PAGE_ID_PLACEHOLDER",
+          "link_data": {
+            "message": "Philippine fuel price change this week: what happens next? Follow our live forecast.",
+            "link": "https://phnews.example/ph?topic=t-fuel-001",
+            "name": "Will pump prices rise next week?",
+            "description": "See the forecast",
+            "call_to_action": {
+              "type": "LEARN_MORE",
+              "value": {
+                "link": "https://phnews.example/ph?topic=t-fuel-001"
+              }
+            },
+            "image_hash": "stub_img_29032354a36ab648"
+          }
+        }
+      },
+      "returns": "stub_creative_c3d41162"
+    },
+    "ad": {
+      "path": "/act_ACT_PLACEHOLDER/ads",
+      "payload": {
+        "name": "phnews-ph-2026-06-04-t-fuel-001-en-v0 / ad",
+        "status": "PAUSED",
+        "adset_id": "stub_adset_c3d41162",
+        "creative": {
+          "creative_id": "stub_creative_c3d41162"
+        }
+      },
+      "returns": "stub_ad_c3d41162"
+    }
+  }
+}
