@@ -1,0 +1,85 @@
+{
+  "channel": "facebook",
+  "mode": "stub",
+  "region": "ph",
+  "lang": "zh",
+  "topic_id": "t-typhoon-003",
+  "angle_id": "a-typhoon-s",
+  "policy_status": "pass",
+  "copy_style": "serious",
+  "image_path": "/home/runner/work/Content-ads/Content-ads/artifacts/images/ph/2026-07-15/t-typhoon-003_zh_a-typhoon-s_1-1.png",
+  "image_url": null,
+  "endpoints": {
+    "campaign": {
+      "path": "/act_ACT_PLACEHOLDER/campaigns",
+      "payload": {
+        "name": "phnews-ph-2026-07-15-t-typhoon-003-zh-v0",
+        "objective": "OUTCOME_TRAFFIC",
+        "status": "PAUSED",
+        "special_ad_categories": []
+      },
+      "returns": "stub_campaign_5fa10eb2"
+    },
+    "adset": {
+      "path": "/act_ACT_PLACEHOLDER/adsets",
+      "payload": {
+        "name": "phnews-ph-2026-07-15-t-typhoon-003-zh-v0 / adset",
+        "status": "PAUSED",
+        "daily_budget": 2000,
+        "billing_event": "IMPRESSIONS",
+        "optimization_goal": "LINK_CLICKS",
+        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+        "targeting": {
+          "geo_locations": {
+            "countries": [
+              "PH"
+            ]
+          },
+          "publisher_platforms": [
+            "facebook"
+          ],
+          "facebook_positions": [
+            "feed"
+          ]
+        },
+        "campaign_id": "stub_campaign_5fa10eb2"
+      },
+      "returns": "stub_adset_5fa10eb2"
+    },
+    "adcreative": {
+      "path": "/act_ACT_PLACEHOLDER/adcreatives",
+      "payload": {
+        "name": "phnews-ph-2026-07-15-t-typhoon-003-zh-v0 / creative",
+        "object_story_spec": {
+          "page_id": "PAGE_ID_PLACEHOLDER",
+          "link_data": {
+            "message": "台风季登陆前景：接下来会怎样？跟踪我们的实时预测。",
+            "link": "https://phnews.example/ph?topic=t-typhoon-003",
+            "name": "本周会有台风登陆吗？",
+            "description": "查看预测",
+            "call_to_action": {
+              "type": "LEARN_MORE",
+              "value": {
+                "link": "https://phnews.example/ph?topic=t-typhoon-003"
+              }
+            },
+            "image_hash": "stub_img_ecf8017a1643a899"
+          }
+        }
+      },
+      "returns": "stub_creative_5fa10eb2"
+    },
+    "ad": {
+      "path": "/act_ACT_PLACEHOLDER/ads",
+      "payload": {
+        "name": "phnews-ph-2026-07-15-t-typhoon-003-zh-v0 / ad",
+        "status": "PAUSED",
+        "adset_id": "stub_adset_5fa10eb2",
+        "creative": {
+          "creative_id": "stub_creative_5fa10eb2"
+        }
+      },
+      "returns": "stub_ad_5fa10eb2"
+    }
+  }
+}
