@@ -1,0 +1,85 @@
+{
+  "channel": "facebook",
+  "mode": "stub",
+  "region": "ph",
+  "lang": "en",
+  "topic_id": "t-bsp-002",
+  "angle_id": "a-bsp-s",
+  "policy_status": "pass",
+  "copy_style": "serious",
+  "image_path": "/home/runner/work/Content-ads/Content-ads/artifacts/images/ph/2026-08-28/t-bsp-002_en_a-bsp-s_1-1.png",
+  "image_url": null,
+  "endpoints": {
+    "campaign": {
+      "path": "/act_ACT_PLACEHOLDER/campaigns",
+      "payload": {
+        "name": "phnews-ph-2026-08-28-t-bsp-002-en-v0",
+        "objective": "OUTCOME_TRAFFIC",
+        "status": "PAUSED",
+        "special_ad_categories": []
+      },
+      "returns": "stub_campaign_4e14c5db"
+    },
+    "adset": {
+      "path": "/act_ACT_PLACEHOLDER/adsets",
+      "payload": {
+        "name": "phnews-ph-2026-08-28-t-bsp-002-en-v0 / adset",
+        "status": "PAUSED",
+        "daily_budget": 2000,
+        "billing_event": "IMPRESSIONS",
+        "optimization_goal": "LINK_CLICKS",
+        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+        "targeting": {
+          "geo_locations": {
+            "countries": [
+              "PH"
+            ]
+          },
+          "publisher_platforms": [
+            "facebook"
+          ],
+          "facebook_positions": [
+            "feed"
+          ]
+        },
+        "campaign_id": "stub_campaign_4e14c5db"
+      },
+      "returns": "stub_adset_4e14c5db"
+    },
+    "adcreative": {
+      "path": "/act_ACT_PLACEHOLDER/adcreatives",
+      "payload": {
+        "name": "phnews-ph-2026-08-28-t-bsp-002-en-v0 / creative",
+        "object_story_spec": {
+          "page_id": "PAGE_ID_PLACEHOLDER",
+          "link_data": {
+            "message": "BSP interest rate decision: what happens next? Follow our live forecast.",
+            "link": "https://phnews.example/ph?topic=t-bsp-002",
+            "name": "Will the BSP cut rates this month?",
+            "description": "See the forecast",
+            "call_to_action": {
+              "type": "LEARN_MORE",
+              "value": {
+                "link": "https://phnews.example/ph?topic=t-bsp-002"
+              }
+            },
+            "image_hash": "stub_img_5fd4f32f5d5b22cf"
+          }
+        }
+      },
+      "returns": "stub_creative_4e14c5db"
+    },
+    "ad": {
+      "path": "/act_ACT_PLACEHOLDER/ads",
+      "payload": {
+        "name": "phnews-ph-2026-08-28-t-bsp-002-en-v0 / ad",
+        "status": "PAUSED",
+        "adset_id": "stub_adset_4e14c5db",
+        "creative": {
+          "creative_id": "stub_creative_4e14c5db"
+        }
+      },
+      "returns": "stub_ad_4e14c5db"
+    }
+  }
+}
