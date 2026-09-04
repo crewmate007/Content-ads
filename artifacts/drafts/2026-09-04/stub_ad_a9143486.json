@@ -1,0 +1,85 @@
+{
+  "channel": "facebook",
+  "mode": "stub",
+  "region": "id",
+  "lang": "zh",
+  "topic_id": "t-fuel-001",
+  "angle_id": "a-fuel-s",
+  "policy_status": "pass",
+  "copy_style": "serious",
+  "image_path": "/home/runner/work/Content-ads/Content-ads/artifacts/images/id/2026-09-04/t-fuel-001_zh_a-fuel-s_1-1.png",
+  "image_url": null,
+  "endpoints": {
+    "campaign": {
+      "path": "/act_ACT_PLACEHOLDER/campaigns",
+      "payload": {
+        "name": "phnews-id-2026-09-04-t-fuel-001-zh-v0",
+        "objective": "OUTCOME_TRAFFIC",
+        "status": "PAUSED",
+        "special_ad_categories": []
+      },
+      "returns": "stub_campaign_a9143486"
+    },
+    "adset": {
+      "path": "/act_ACT_PLACEHOLDER/adsets",
+      "payload": {
+        "name": "phnews-id-2026-09-04-t-fuel-001-zh-v0 / adset",
+        "status": "PAUSED",
+        "daily_budget": 2000,
+        "billing_event": "IMPRESSIONS",
+        "optimization_goal": "LINK_CLICKS",
+        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+        "targeting": {
+          "geo_locations": {
+            "countries": [
+              "ID"
+            ]
+          },
+          "publisher_platforms": [
+            "facebook"
+          ],
+          "facebook_positions": [
+            "feed"
+          ]
+        },
+        "campaign_id": "stub_campaign_a9143486"
+      },
+      "returns": "stub_adset_a9143486"
+    },
+    "adcreative": {
+      "path": "/act_ACT_PLACEHOLDER/adcreatives",
+      "payload": {
+        "name": "phnews-id-2026-09-04-t-fuel-001-zh-v0 / creative",
+        "object_story_spec": {
+          "page_id": "PAGE_ID_PLACEHOLDER",
+          "link_data": {
+            "message": "本周菲律宾油价变动：接下来会怎样？跟踪我们的实时预测。",
+            "link": "https://phnews.example/ph?topic=t-fuel-001",
+            "name": "下周油价会上涨吗？",
+            "description": "查看预测",
+            "call_to_action": {
+              "type": "LEARN_MORE",
+              "value": {
+                "link": "https://phnews.example/ph?topic=t-fuel-001"
+              }
+            },
+            "image_hash": "stub_img_22dcf3cabe8d7502"
+          }
+        }
+      },
+      "returns": "stub_creative_a9143486"
+    },
+    "ad": {
+      "path": "/act_ACT_PLACEHOLDER/ads",
+      "payload": {
+        "name": "phnews-id-2026-09-04-t-fuel-001-zh-v0 / ad",
+        "status": "PAUSED",
+        "adset_id": "stub_adset_a9143486",
+        "creative": {
+          "creative_id": "stub_creative_a9143486"
+        }
+      },
+      "returns": "stub_ad_a9143486"
+    }
+  }
+}
